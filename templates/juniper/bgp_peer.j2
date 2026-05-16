@@ -1,0 +1,16 @@
+system {
+    host-name {{ device.name }};
+}
+routing-options {
+    router-id 10.0.0.{{ loop.index }};
+    autonomous-system {{ device.asn }};
+}
+protocols {
+    bgp {
+        group PEERS {
+            peer-as external;
+            neighbor 10.10.1.1;
+            neighbor 10.10.2.1;
+        }
+    }
+}

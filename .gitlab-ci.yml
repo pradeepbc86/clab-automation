@@ -1,0 +1,35 @@
+stages:
+  - lint
+  - generate
+  - diff
+  - deploy
+
+lint:
+  stage: lint
+  image: python:3.12
+  script:
+    - pip install yamllint
+    - yamllint .
+
+generate:
+  stage: generate
+  image: python:3.12
+  script:
+    - pip install jinja2 requests
+    - python3 generate.py --all
+  artifacts:
+    paths:
+      - output/
+    expire_in: 1 week
+
+diff:
+  stage: diff
+  script:
+    - git diff output/
+
+deploy:
+  stage: deploy
+  script:
+    - echo "Deploy stage (manual)"
+    - echo "python3 deploy.py --device spine1"
+  when: manual

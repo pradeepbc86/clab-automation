@@ -1,0 +1,26 @@
+name: bgp-config-automation
+
+topology:
+  nodes:
+    spine1:
+      kind: linux
+      image: arista_ceos:latest
+      ports:
+        - 8001:8001
+
+    leaf1:
+      kind: linux
+      image: arista_ceos:latest
+      ports:
+        - 8002:8002
+
+    leaf2:
+      kind: linux
+      image: frrouting/frr:9.1.0
+      ports:
+        - 2222:22
+
+  links:
+    - endpoints: ["spine1:eth1", "leaf1:eth1"]
+    - endpoints: ["spine1:eth2", "leaf2:eth1"]
+    - endpoints: ["leaf1:eth0", "leaf2:eth0"]
