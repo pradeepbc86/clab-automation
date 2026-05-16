@@ -2,14 +2,17 @@
 hostname {{ device.name }}
 !
 router bgp {{ device.asn }}
-  router-id 10.0.0.{{ loop.index }}
-  neighbor PEERS peer-group
-  neighbor PEERS remote-as external
-  neighbor 10.10.1.1 peer-group PEERS
-  neighbor 10.10.2.1 peer-group PEERS
-  !
-  address-family ipv4
-    neighbor PEERS activate
-    redistribute connected
-  exit-address-family
+   router-id {{ device.router_id }}
+   bgp log-neighbor-changes
+{%- for peer in device.peers %}
+   neighbor {{ peer.ip }} remote-as {{ peer.asn }}
+   neighbor {{ peer.ip }} description {{ peer.description }}
+{%- endfor %}
+   !
+   address-family ipv4
+{%- for peer in device.peers %}
+      neighbor {{ peer.ip }} activate
+{%- endfor %}
+      redistribute connected
+   exit-address-family
 !

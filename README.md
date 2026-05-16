@@ -1,21 +1,21 @@
-# clab-bgp-config-automation
+# clab-auto-config
 
 Multi-vendor BGP config GitOps pipeline: Netbox as Source of Truth, Jinja2 templates, NAPALM + Netmiko deployment, SaltStack orchestration, RANCID for config backup and drift detection.
 
 ## Pipeline
 
 ```
-Netbox (SoT) 
+Netbox (SoT)
   ↓
-generate.py (Jinja2 render)
+generate.py (Jinja2 render per vendor)
   ↓
 Git MR (code review)
   ↓
-lint CI (yamllint)
+lint CI (yamllint + ruff)
   ↓
-NAPALM/SaltStack deploy (manual trigger)
-  ↓
-validate.py (post-deploy BGP check)
+deploy.py — NAPALM (cEOS) + Netmiko (FRR)   ← manual stage
+  ↓                                            (SaltStack states live alongside
+validate.py (post-deploy BGP check)            in salt/ for declarative variant)
   ↓
 RANCID (backup running config to Git)
   ↓
@@ -59,25 +59,32 @@ leaf1                          ←→ leaf2
 ## Quick Start
 
 ```bash
-# Start Netbox Docker
-make netbox-up
+# 1. Copy env template and fill in values
+cp .env.example .env
+# Edit .env — set NETBOX_TOKEN, DEVICE_PASSWORD
 
-# Populate Netbox with sample BGP peer data
+# 2. Start Netbox
+make netbox-up
+# Then log in at http://localhost:8000 (admin/admin) and generate an API token
+# Bootstrap device-types / sites / platforms via the Netbox UI before seeding
+
+# 3. Source env and populate Netbox
+set -a; source .env; set +a
 python netbox/seed.py
 
-# Generate configs from Netbox + Jinja2
+# 4. Generate configs from Netbox + Jinja2 (falls back to sample data if Netbox empty)
 python generate.py --all
 
-# View diffs (what would be deployed)
+# 5. View diffs
 make diff
 
-# Deploy to live devices (manual)
+# 6. Deploy to lab devices (interactive; use --yes for CI)
 python deploy.py --device spine1
 
-# Validate post-deploy
+# 7. Validate post-deploy
 python validate.py
 
-# Detect drift
+# 8. Detect drift vs SoT
 python compliance.py
 ```
 

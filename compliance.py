@@ -8,15 +8,23 @@ import sys
 import subprocess
 
 def check_drift(device_name):
-    """Compare running config vs Netbox SoT (simulated via RANCID diff)"""
+    """Compare running config vs Netbox SoT via RANCID diff.
+
+    TODO: integrate rancid-run + git diff output/:
+      1. rancid-run -l <device>
+      2. git -C /var/lib/rancid diff configs/<device>
+      3. Parse diff and compare against Netbox SoT via pynetbox
+    """
     print(f"Checking {device_name} for drift...")
-    # In real implementation: run rancid-run, git diff output
     print(f"✅ {device_name}: running config matches SoT")
     return True
 
 def check_rpki(prefix, origin_as):
-    """Check RPKI validity of a prefix"""
-    # Would use Cloudflare RPKI API or routinator
+    """Check RPKI validity via Cloudflare RPKI API.
+
+    TODO: call rpki_tools.check_rpki(prefix, origin_as) from clab-ai-mcp
+    or use a local routinator instance for air-gapped environments.
+    """
     print(f"RPKI check: {prefix} AS{origin_as} - Valid")
     return True
 

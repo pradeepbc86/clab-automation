@@ -1,17 +1,23 @@
-version: '3.8'
 services:
   netbox:
     image: netboxcommunity/netbox:latest
     ports:
-      - "8000:8080"
+      - "127.0.0.1:8000:8080"
     environment:
       DB_NAME: netbox
       DB_USER: netbox
       DB_PASSWORD: netbox
-      POSTGRES_HOST_AUTH_METHOD: trust
+    depends_on:
+      - postgres
+
   postgres:
     image: postgres:13
     environment:
       POSTGRES_DB: netbox
       POSTGRES_USER: netbox
       POSTGRES_PASSWORD: netbox
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

@@ -8,7 +8,7 @@ import sys
 
 def check_bgp_state(device_name):
     """Check BGP neighbors are Established"""
-    cmd = f"sudo docker exec clab-bgp-config-automation-{device_name} vtysh -c 'show bgp summary' 2>/dev/null"
+    cmd = f"sudo docker exec clab-auto-config-{device_name} vtysh -c 'show bgp summary' 2>/dev/null"
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
         output = result.stdout + result.stderr

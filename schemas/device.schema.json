@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pradeepbc86/clab-auto-config/schemas/device.schema.json",
+  "title": "Device",
+  "description": "Source-of-truth schema for a single device in the BGP fabric SoT. Used by generate.py to validate Netbox export or sample data before rendering Jinja2 templates.",
+  "type": "object",
+  "required": ["name", "platform", "asn", "router_id", "peers"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,62}$",
+      "description": "Lowercase hostname, e.g. spine1, jdc1-leaf-a01"
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["frr", "arista_eos", "juniper_junos", "cisco_iosxr"]
+    },
+    "asn": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295,
+      "description": "Local BGP ASN (2-byte or 4-byte private/public)"
+    },
+    "router_id": {
+      "type": "string",
+      "format": "ipv4",
+      "description": "BGP router-id; typically the loopback IPv4 address"
+    },
+    "peers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["ip", "asn", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "ip": { "type": "string", "format": "ipv4" },
+          "asn": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+          "description": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "max_prefix": { "type": "integer", "minimum": 1, "default": 1000 },
+          "bfd": { "type": "boolean", "default": true }
+        }
+      }
+    }
+  }
+}

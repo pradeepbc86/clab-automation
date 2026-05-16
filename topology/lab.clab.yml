@@ -1,24 +1,26 @@
-name: bgp-config-automation
+name: auto-config
 
 topology:
   nodes:
     spine1:
-      kind: linux
+      kind: ceos
       image: arista_ceos:latest
       ports:
-        - 8001:8001
+        - "8001:443"   # NAPALM eAPI (HTTPS) — host:container
+        - "8101:22"    # SSH for ad-hoc / Netmiko fallback
 
     leaf1:
-      kind: linux
+      kind: ceos
       image: arista_ceos:latest
       ports:
-        - 8002:8002
+        - "8002:443"
+        - "8102:22"
 
     leaf2:
       kind: linux
       image: frrouting/frr:9.1.0
       ports:
-        - 2222:22
+        - "2222:22"    # SSH for Netmiko (FRR)
 
   links:
     - endpoints: ["spine1:eth1", "leaf1:eth1"]

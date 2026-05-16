@@ -2,15 +2,19 @@ system {
     host-name {{ device.name }};
 }
 routing-options {
-    router-id 10.0.0.{{ loop.index }};
+    router-id {{ device.router_id }};
     autonomous-system {{ device.asn }};
 }
 protocols {
     bgp {
         group PEERS {
-            peer-as external;
-            neighbor 10.10.1.1;
-            neighbor 10.10.2.1;
+            type external;
+{%- for peer in device.peers %}
+            neighbor {{ peer.ip }} {
+                description {{ peer.description }};
+                peer-as {{ peer.asn }};
+            }
+{%- endfor %}
         }
     }
 }

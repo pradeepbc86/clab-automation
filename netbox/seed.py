@@ -7,7 +7,10 @@ import os
 import requests
 
 NETBOX_URL = os.getenv('NETBOX_URL', 'http://localhost:8000')
-NETBOX_TOKEN = os.getenv('NETBOX_TOKEN', 'your-token-here')
+NETBOX_TOKEN = os.getenv('NETBOX_TOKEN')
+if not NETBOX_TOKEN:
+    print("Error: NETBOX_TOKEN env var not set")
+    raise SystemExit(1)
 
 headers = {'Authorization': f'Token {NETBOX_TOKEN}', 'Content-Type': 'application/json'}
 

@@ -1,5 +1,6 @@
 .env
 output/
 *.log
-clab-bgp-config-automation/
-.git
+*.pyc
+__pycache__/
+.DS_Store

@@ -11,8 +11,40 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 import requests
 
+try:
+    import jsonschema
+    HAS_JSONSCHEMA = True
+except ImportError:
+    HAS_JSONSCHEMA = False
+
 NETBOX_URL = os.getenv('NETBOX_URL', 'http://localhost:8000')
-NETBOX_TOKEN = os.getenv('NETBOX_TOKEN', 'your-token-here')
+NETBOX_TOKEN = os.getenv('NETBOX_TOKEN')
+if not NETBOX_TOKEN:
+    print("Warning: NETBOX_TOKEN not set — falling back to sample data")
+
+SCHEMA_PATH = Path(__file__).parent / 'schemas' / 'device.schema.json'
+
+
+def validate_devices(devices: list[dict]) -> list[dict]:
+    """Validate each device against JSON Schema. Fail loud on invalid input."""
+    if not HAS_JSONSCHEMA:
+        print("Warning: jsonschema not installed — skipping SoT validation")
+        return devices
+    if not SCHEMA_PATH.exists():
+        print(f"Warning: {SCHEMA_PATH} missing — skipping validation")
+        return devices
+    schema = json.loads(SCHEMA_PATH.read_text())
+    validator = jsonschema.Draft202012Validator(schema)
+    errors = []
+    for d in devices:
+        for err in validator.iter_errors(d):
+            errors.append(f"{d.get('name','<unnamed>')}: {err.message} at {list(err.path)}")
+    if errors:
+        print("SoT validation failed:")
+        for e in errors:
+            print(f"  - {e}")
+        sys.exit(1)
+    return devices
 
 def get_devices_from_netbox():
     """Fetch all devices and BGP peers from Netbox"""
@@ -39,13 +71,35 @@ def render_config(device, template_path):
 def generate_configs(device_name=None):
     """Generate configs for all or specified device"""
     devices = get_devices_from_netbox()
+    devices = validate_devices(devices)
 
     if not devices:
         print("No devices found in Netbox. Using sample data.")
         devices = [
-            {'name': 'spine1', 'platform': 'arista_eos', 'asn': 65000},
-            {'name': 'leaf1', 'platform': 'arista_eos', 'asn': 65001},
-            {'name': 'leaf2', 'platform': 'frr', 'asn': 65002},
+            {
+                'name': 'spine1', 'platform': 'arista_eos', 'asn': 65000,
+                'router_id': '10.0.0.1',
+                'peers': [
+                    {'ip': '10.10.1.2', 'asn': 65001, 'description': 'leaf1'},
+                    {'ip': '10.10.2.2', 'asn': 65002, 'description': 'leaf2'},
+                ]
+            },
+            {
+                'name': 'leaf1', 'platform': 'arista_eos', 'asn': 65001,
+                'router_id': '10.0.0.3',
+                'peers': [
+                    {'ip': '10.10.1.1', 'asn': 65000, 'description': 'spine1'},
+                    {'ip': '10.10.3.1', 'asn': 65000, 'description': 'spine2'},
+                ]
+            },
+            {
+                'name': 'leaf2', 'platform': 'frr', 'asn': 65002,
+                'router_id': '10.0.0.4',
+                'peers': [
+                    {'ip': '10.10.2.1', 'asn': 65000, 'description': 'spine1'},
+                    {'ip': '10.10.4.1', 'asn': 65000, 'description': 'spine2'},
+                ]
+            },
         ]
 
     template_map = {

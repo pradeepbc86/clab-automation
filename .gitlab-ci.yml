@@ -1,5 +1,6 @@
 stages:
   - lint
+  - test
   - generate
   - diff
   - deploy
@@ -8,8 +9,16 @@ lint:
   stage: lint
   image: python:3.12
   script:
-    - pip install yamllint
+    - pip install yamllint ruff
     - yamllint .
+    - ruff check .
+
+test:
+  stage: test
+  image: python:3.12
+  script:
+    - pip install jinja2 jsonschema pytest
+    - pytest tests/ -v
 
 generate:
   stage: generate

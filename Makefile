@@ -24,4 +24,3 @@ netbox-down:
 
 clean:
 	rm -rf output/*.conf
-	rm -rf clab-bgp-config-automation/

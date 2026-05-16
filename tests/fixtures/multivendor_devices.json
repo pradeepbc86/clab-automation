@@ -1,0 +1,22 @@
+[
+  {
+    "name": "wan-edge-jdc1-jnpr-01",
+    "platform": "juniper_junos",
+    "asn": 4200000010,
+    "router_id": "10.0.10.1",
+    "peers": [
+      { "ip": "10.10.10.1", "asn": 4200000001, "description": "spine1" },
+      { "ip": "10.10.10.5", "asn": 4200000002, "description": "spine2" }
+    ]
+  },
+  {
+    "name": "wan-edge-jdc1-cisco-01",
+    "platform": "cisco_iosxr",
+    "asn": 4200000011,
+    "router_id": "10.0.10.2",
+    "peers": [
+      { "ip": "10.10.11.1", "asn": 4200000001, "description": "spine1" },
+      { "ip": "10.10.11.5", "asn": 4200000002, "description": "spine2" }
+    ]
+  }
+]
