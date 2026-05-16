@@ -1,0 +1,26 @@
+{
+  "name": "leaf99",
+  "platform": "frr",
+  "asn": 4200000099,
+  "router_id": "10.0.0.99",
+  "loopback": "10.0.0.99/32",
+  "peers": [
+    {"ip": "10.10.99.1", "asn": 4200000001, "description": "spine1",
+     "group": "SPINES", "max_prefix": 1000, "bfd": true,
+     "route_map_in": "RM-SPINES-IN", "route_map_out": "RM-SPINES-OUT"}
+  ],
+  "policies": {
+    "prefix_lists": [
+      {"name": "PL-LOCAL-SERVERS", "entries": [
+        {"seq": 10, "action": "permit", "prefix": "192.168.99.0/24", "le": 32}
+      ]}
+    ],
+    "route_maps": [
+      {"name": "RM-SPINES-OUT", "entries": [
+        {"seq": 10, "action": "permit",
+         "match_prefix_list": "PL-LOCAL-SERVERS",
+         "set_large_community": "4200000099:1:1 4200000099:2:2"}
+      ]}
+    ]
+  }
+}

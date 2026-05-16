@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "clab-auto-config"
+name = "clab-automation"
 version = "0.1.0"
 dependencies = [
     "napalm>=4.0.0",

@@ -1,0 +1,20 @@
+{
+  "name": "leaf1",
+  "platform": "frr",
+  "asn": 4200000003,
+  "router_id": "10.0.0.3",
+  "loopback": "10.0.0.3/32",
+  "interfaces": [
+    {"name": "eth1", "description": "to spine1 (unnumbered)", "mtu": 9216},
+    {"name": "eth2", "description": "to spine2 (unnumbered)", "mtu": 9216},
+    {"name": "eth0", "description": "to leaf2 (unnumbered)",  "mtu": 9216}
+  ],
+  "peers": [
+    {
+      "ip": "10.10.1.1", "asn": 4200000001, "description": "spine1",
+      "group": "SPINES", "max_prefix": 1000, "bfd": true
+    }
+  ],
+  "bfd_profile": {"name": "FABRIC", "detect_multiplier": 3, "receive_interval": 150, "transmit_interval": 150},
+  "evpn": {"enabled": true, "advertise_all_vni": true, "advertise_default_gw": true}
+}

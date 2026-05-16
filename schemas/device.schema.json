@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/pradeepbc86/clab-auto-config/schemas/device.schema.json",
+  "$id": "https://github.com/pradeepbc86/clab-automation/schemas/device.schema.json",
   "title": "Device",
-  "description": "Source-of-truth schema for a single device in the BGP fabric SoT. Used by generate.py to validate Netbox export or sample data before rendering Jinja2 templates.",
+  "description": "Source-of-truth schema for a single device in the BGP fabric SoT. The required fields cover any BGP-speaking device; optional blocks (interfaces, evpn, bfd_profile, graceful_restart, policies) model the depth needed to render full fabric configs including the clab-fabric-evpn reference.",
   "type": "object",
   "required": ["name", "platform", "asn", "router_id", "peers"],
   "additionalProperties": false,
@@ -10,7 +10,7 @@
     "name": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{1,62}$",
-      "description": "Lowercase hostname, e.g. spine1, jdc1-leaf-a01"
+      "description": "Lowercase hostname"
     },
     "platform": {
       "type": "string",
@@ -19,13 +19,29 @@
     "asn": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 4294967295,
-      "description": "Local BGP ASN (2-byte or 4-byte private/public)"
+      "maximum": 4294967295
     },
     "router_id": {
       "type": "string",
-      "format": "ipv4",
-      "description": "BGP router-id; typically the loopback IPv4 address"
+      "format": "ipv4"
+    },
+    "loopback": {
+      "type": "string",
+      "description": "Loopback IPv4 with prefix-length, e.g. 10.0.0.3/32"
+    },
+    "interfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "ip": {"type": "string", "description": "IPv4 with prefix, e.g. 10.10.1.2/30; omit for unnumbered"},
+          "description": {"type": "string"},
+          "mtu": {"type": "integer", "minimum": 1500, "maximum": 9216, "default": 9216}
+        }
+      }
     },
     "peers": {
       "type": "array",
@@ -35,11 +51,117 @@
         "required": ["ip", "asn", "description"],
         "additionalProperties": false,
         "properties": {
-          "ip": { "type": "string", "format": "ipv4" },
-          "asn": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
-          "description": { "type": "string", "minLength": 1, "maxLength": 80 },
-          "max_prefix": { "type": "integer", "minimum": 1, "default": 1000 },
-          "bfd": { "type": "boolean", "default": true }
+          "ip": {"type": "string"},
+          "asn": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+          "description": {"type": "string", "minLength": 1, "maxLength": 80},
+          "group": {"type": "string", "description": "Peer-group name (SPINES / LEAVES / etc)"},
+          "max_prefix": {"type": "integer", "minimum": 1, "default": 1000},
+          "bfd": {"type": "boolean", "default": true},
+          "route_map_in": {"type": "string"},
+          "route_map_out": {"type": "string"}
+        }
+      }
+    },
+    "bfd_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "default": "FABRIC"},
+        "detect_multiplier": {"type": "integer", "minimum": 1, "default": 3},
+        "receive_interval": {"type": "integer", "minimum": 50, "default": 150},
+        "transmit_interval": {"type": "integer", "minimum": 50, "default": 150}
+      }
+    },
+    "graceful_restart": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean", "default": true},
+        "preserve_fw_state": {"type": "boolean", "default": true},
+        "stalepath_time": {"type": "integer", "default": 300},
+        "restart_time": {"type": "integer", "default": 120}
+      }
+    },
+    "evpn": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean", "default": false},
+        "advertise_all_vni": {"type": "boolean", "default": false},
+        "advertise_default_gw": {"type": "boolean", "default": false},
+        "vnis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "integer", "minimum": 1, "maximum": 16777215},
+              "type": {"type": "string", "enum": ["L2", "L3"], "default": "L2"},
+              "vxlan_if": {"type": "string"},
+              "vrf": {"type": "string", "default": "default"}
+            }
+          }
+        }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefix_lists": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "entries"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string"},
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["seq", "action", "prefix"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "seq": {"type": "integer"},
+                    "action": {"type": "string", "enum": ["permit", "deny"]},
+                    "prefix": {"type": "string"},
+                    "le": {"type": "integer"},
+                    "ge": {"type": "integer"}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "route_maps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "entries"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string"},
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["seq", "action"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "seq": {"type": "integer"},
+                    "action": {"type": "string", "enum": ["permit", "deny"]},
+                    "match_prefix_list": {"type": "string"},
+                    "set_local_preference": {"type": "integer"},
+                    "set_community": {"type": "string"},
+                    "set_large_community": {"type": "string"},
+                    "set_as_path_prepend": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

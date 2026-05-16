@@ -1,0 +1,4 @@
+# Suppress GitHub language detection — these are infrastructure repos
+# (configs + IaC + docs) more than they are code projects. We want the
+# pinned-repo card to show description + stars, not a Python/Shell label.
+* linguist-detectable=false

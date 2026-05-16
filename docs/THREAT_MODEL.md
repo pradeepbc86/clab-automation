@@ -1,4 +1,4 @@
-# Threat Model — clab-auto-config
+# Threat Model — clab-automation
 
 STRIDE-style threat model for the multi-vendor BGP config GitOps pipeline.
 
@@ -30,7 +30,7 @@ STRIDE-style threat model for the multi-vendor BGP config GitOps pipeline.
 │  Deploy host (engineer's laptop / bastion) │
 │  - reads .env (DEVICE_PASSWORD, NETBOX_TOKEN)│
 │  - deploy.py → NAPALM (cEOS) / Netmiko (FRR)│
-│  - emits deploy events → obs-telemetry     │
+│  - emits deploy events → observability     │
 └────────┬───────────────────────────────────┘
          │ HTTPS (eAPI) / SSH (vtysh)
          ▼
@@ -67,7 +67,7 @@ The critical boundary is **#3** — anything coming out of NetBox could have bee
 | Generated configs (`output/`) | Medium — leaks topology if exfiltrated |
 | Git history of `output/` | Medium — historical configs ≈ current configs |
 | RANCID-collected device configs | Medium |
-| Deploy events stream (to obs-telemetry) | Low — operational metadata |
+| Deploy events stream (to observability) | Low — operational metadata |
 
 ## STRIDE analysis
 
@@ -94,7 +94,7 @@ The critical boundary is **#3** — anything coming out of NetBox could have bee
 | Threat | Mitigation |
 |--------|------------|
 | Engineer denies pushing a change | Git history with signed commits (`git commit -S`) — operator-discipline gap |
-| Engineer denies running deploy | Deploy events emitted to obs-telemetry's Elasticsearch with username + diff size + timestamp |
+| Engineer denies running deploy | Deploy events emitted to observability's Elasticsearch with username + diff size + timestamp |
 | Device denies receiving change | RANCID-collected config snapshots in git serve as evidence |
 
 ### I — Information disclosure

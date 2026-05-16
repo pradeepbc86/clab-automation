@@ -1,0 +1,54 @@
+{
+  "name": "spine2",
+  "platform": "frr",
+  "asn": 4200000002,
+  "router_id": "10.0.0.2",
+  "loopback": "10.0.0.2/32",
+  "interfaces": [
+    {"name": "eth1", "ip": "10.10.3.1/30", "description": "to leaf1", "mtu": 9216},
+    {"name": "eth2", "ip": "10.10.4.1/30", "description": "to leaf2", "mtu": 9216}
+  ],
+  "peers": [
+    {
+      "ip": "10.10.3.2", "asn": 4200000003, "description": "leaf1",
+      "group": "LEAVES", "max_prefix": 1000, "bfd": true,
+      "route_map_in": "RM-LEAVES-IN", "route_map_out": "RM-LEAVES-OUT"
+    },
+    {
+      "ip": "10.10.4.2", "asn": 4200000004, "description": "leaf2",
+      "group": "LEAVES", "max_prefix": 1000, "bfd": true,
+      "route_map_in": "RM-LEAVES-IN", "route_map_out": "RM-LEAVES-OUT"
+    }
+  ],
+  "bfd_profile": {"name": "FABRIC", "detect_multiplier": 3, "receive_interval": 150, "transmit_interval": 150},
+  "graceful_restart": {"enabled": true, "preserve_fw_state": true, "stalepath_time": 300, "restart_time": 120},
+  "evpn": {"enabled": true, "advertise_all_vni": false, "advertise_default_gw": false},
+  "policies": {
+    "prefix_lists": [
+      {"name": "PL-BOGON", "entries": [
+        {"seq": 5,  "action": "permit", "prefix": "0.0.0.0/8",       "le": 32},
+        {"seq": 15, "action": "permit", "prefix": "127.0.0.0/8",     "le": 32},
+        {"seq": 20, "action": "permit", "prefix": "169.254.0.0/16",  "le": 32},
+        {"seq": 25, "action": "permit", "prefix": "224.0.0.0/4",     "le": 32},
+        {"seq": 30, "action": "permit", "prefix": "240.0.0.0/4",     "le": 32}
+      ]},
+      {"name": "PL-FABRIC-LOOPBACKS", "entries": [
+        {"seq": 10, "action": "permit", "prefix": "10.0.0.0/24", "le": 32}
+      ]},
+      {"name": "PL-FABRIC-P2P", "entries": [
+        {"seq": 10, "action": "permit", "prefix": "10.10.0.0/16", "le": 30}
+      ]}
+    ],
+    "route_maps": [
+      {"name": "RM-LEAVES-IN", "entries": [
+        {"seq": 10, "action": "deny",   "match_prefix_list": "PL-BOGON"},
+        {"seq": 20, "action": "permit", "match_prefix_list": "PL-FABRIC-LOOPBACKS"},
+        {"seq": 30, "action": "permit"}
+      ]},
+      {"name": "RM-LEAVES-OUT", "entries": [
+        {"seq": 10, "action": "permit", "match_prefix_list": "PL-FABRIC-LOOPBACKS"},
+        {"seq": 20, "action": "permit", "match_prefix_list": "PL-FABRIC-P2P"}
+      ]}
+    ]
+  }
+}

@@ -35,4 +35,4 @@ In particular, please report:
 ## Threat models
 
 Per-repo threat models live in `docs/THREAT_MODEL.md` where applicable
-(currently `clab-ai-mcp` and `clab-auto-config`).
+(currently `clab-ai-mcp` and `clab-automation`).

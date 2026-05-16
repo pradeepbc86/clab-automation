@@ -1,4 +1,4 @@
-# clab-auto-config
+# clab-automation
 
 Multi-vendor BGP config GitOps pipeline: Netbox as Source of Truth, Jinja2 templates, NAPALM + Netmiko deployment, SaltStack orchestration, RANCID for config backup and drift detection.
 

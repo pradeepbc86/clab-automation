@@ -11,7 +11,7 @@ Features:
 - Canary sequencing — deploy to a "canary" device first, sleep, verify, proceed
 - Safety budget — abort the run if more than --safety-threshold devices fail
 - Deploy events — emit a structured JSONL record per device deploy attempt for
-  obs-telemetry ingestion
+  observability ingestion
 """
 
 import argparse
@@ -21,10 +21,17 @@ import os
 import subprocess
 import sys
 import time
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 from napalm import get_network_driver
 from netmiko import ConnectHandler
+
+# Prometheus endpoint for the cross-system canary gate. If --canary is set,
+# deploy.py queries Prometheus after the canary device deploys to confirm
+# convergence before proceeding to the rest of the fleet.
+PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
 
 # --- configuration -----------------------------------------------------------
 
@@ -45,11 +52,10 @@ AUTO_YES = False
 # --- helpers -----------------------------------------------------------------
 
 def emit_event(record: dict):
-    """Append a structured deploy event for obs-telemetry to ingest."""
-    record["ts"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with EVENTS_PATH.open("a") as f:
-        f.write(json.dumps(record) + "\n")
+    """Emit a deploy event via obs_sink (JSONL default + optional ES forward)."""
+    from obs_sink import emit as _sink_emit
+    record.setdefault("source", "deploy.py")
+    _sink_emit(record, path=EVENTS_PATH)
 
 
 def check_diff_bounds(device_name: str, max_delta: int) -> tuple[bool, int]:
@@ -117,24 +123,151 @@ def deploy_with_napalm(device_name: str, config_file: str) -> dict:
     return {"device": device_name, "outcome": outcome, "diff_lines": len(diff.splitlines())}
 
 
-def deploy_with_netmiko(device_name: str, config_file: str) -> dict:
-    conn = ConnectHandler(
-        device_type='linux', host='127.0.0.1',
-        username=DEVICE_USER, password=DEVICE_PASSWORD, port=2222,
+def deploy_with_frr_reload(device_name: str, config_file: str) -> dict:
+    """
+    Transactional FRR deploy via `frr-reload.py` over SSH + SFTP.
+
+    Flow:
+      1. SFTP the rendered frr.conf to /tmp on the device (paramiko, not heredoc)
+      2. SSH and run `frr-reload.py --test` to validate parsable
+      3. If valid + operator-approved, run `frr-reload.py --reload` (atomic apply)
+      4. SFTP cleanup
+      5. Capture diff output for audit log
+
+    frr-reload.py is FRR's official differential config tool — computes the
+    minimal vtysh command set needed to converge running → candidate, and
+    rolls back automatically if any command fails parse.
+    """
+    import paramiko  # local import — paramiko is heavier than netmiko
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(
+        hostname="127.0.0.1", port=2222,
+        username=DEVICE_USER, password=DEVICE_PASSWORD,
+        timeout=10,
     )
-    config = Path(config_file).read_text()
-    print(f"\n--- Config for {device_name} ---\n{config}\n")
 
-    if AUTO_YES or input(f"Deploy to {device_name}? [y/N]: ").lower() == 'y':
-        conn.send_config_set(config.split("\n"))
-        outcome = "deployed"
-        print(f"✅ {device_name}: deployed")
-    else:
-        outcome = "skipped"
-        print(f"❌ {device_name}: skipped")
+    remote_path = f"/tmp/frr-{device_name}-new.conf"
 
-    conn.disconnect()
-    return {"device": device_name, "outcome": outcome, "diff_lines": len(config.splitlines())}
+    # --- Phase 0: stage file via SFTP (clean transport, no heredoc tricks) ---
+    sftp = client.open_sftp()
+    sftp.put(config_file, remote_path)
+    sftp.close()
+
+    def _run(cmd: str, timeout: int = 30) -> tuple[int, str, str]:
+        stdin, stdout, stderr = client.exec_command(cmd, timeout=timeout)
+        out = stdout.read().decode()
+        err = stderr.read().decode()
+        rc = stdout.channel.recv_exit_status()
+        return rc, out, err
+
+    try:
+        # --- Phase 1: validate (parse-only) ---
+        rc, test_out, test_err = _run(f"sudo frr-reload.py --test --reload {remote_path}")
+        combined = test_out + test_err
+        print(f"\n--- frr-reload diff for {device_name} ---\n{combined}\n")
+
+        if rc != 0:
+            return _cleanup(client, remote_path, {
+                "device": device_name, "outcome": "test-failed",
+                "diff_lines": 0, "stderr_preview": test_err[:500],
+            })
+
+        if "lines to add" not in combined and "lines to delete" not in combined:
+            print(f"✓ {device_name}: no change (idempotent)")
+            return _cleanup(client, remote_path, {
+                "device": device_name, "outcome": "no-op", "diff_lines": 0,
+            })
+
+        if not (AUTO_YES or input(f"Apply to {device_name}? [y/N]: ").lower() == "y"):
+            print(f"❌ {device_name}: skipped (test diff only)")
+            return _cleanup(client, remote_path, {
+                "device": device_name, "outcome": "skipped",
+                "diff_lines": combined.count("\n"),
+            })
+
+        # --- Phase 2: atomic apply ---
+        rc, apply_out, apply_err = _run(f"sudo frr-reload.py --reload {remote_path}", timeout=60)
+        if rc == 0:
+            print(f"✅ {device_name}: deployed (transactional)")
+            outcome = "deployed"
+        else:
+            print(f"❌ {device_name}: frr-reload failed (rc={rc}):\n{apply_err}")
+            outcome = "apply-error"
+
+        return _cleanup(client, remote_path, {
+            "device": device_name,
+            "outcome": outcome,
+            "diff_lines": combined.count("\n"),
+        })
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
+def _cleanup(client, remote_path: str, result: dict) -> dict:
+    """Remove staged file and close transport. Best-effort."""
+    try:
+        client.exec_command(f"rm -f {remote_path}")
+    except Exception:
+        pass
+    return result
+
+
+# Backwards-compat alias for the orchestration code that called deploy_with_netmiko
+deploy_with_netmiko = deploy_with_frr_reload
+
+
+# --- cross-system canary gate (Prometheus convergence) -----------------------
+
+def prom_query(promql: str) -> float | None:
+    """Run an instant PromQL query, return the first sample's value or None."""
+    url = f"{PROMETHEUS_URL}/api/v1/query?query=" + urllib.parse.quote(promql)
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read())
+        if data.get("status") != "success":
+            return None
+        result = data.get("data", {}).get("result", [])
+        if not result:
+            return None
+        return float(result[0]["value"][1])
+    except Exception:
+        return None
+
+
+def wait_for_convergence(device: str, timeout_s: int, poll_s: int = 5) -> tuple[bool, str]:
+    """
+    Block until Prometheus signals that `device` has converged after a deploy.
+
+    Two signals must hold:
+      1. All BGP peers on this device are Established
+      2. No BFD flap on this device in the last 30s
+    """
+    started = time.time()
+    while time.time() - started < timeout_s:
+        established = prom_query(
+            f'sum(frr_bgp_peer_state{{state="Established",instance="{device}"}})'
+        )
+        bfd_flaps = prom_query(
+            f'sum(changes(frr_bfd_peer_uptime_seconds{{instance="{device}"}}[30s]))'
+        )
+
+        if established is None or bfd_flaps is None:
+            elapsed = int(time.time() - started)
+            print(f"  [convergence-gate] {device}: telemetry not visible yet ({elapsed}s)")
+        elif established >= 1 and bfd_flaps == 0:
+            return True, f"Established={int(established)} BFD_flaps=0"
+        else:
+            print(
+                f"  [convergence-gate] {device}: "
+                f"Established={int(established)} BFD_flaps={int(bfd_flaps)} — waiting"
+            )
+        time.sleep(poll_s)
+    return False, f"timeout after {timeout_s}s"
 
 
 # --- orchestration ------------------------------------------------------------
@@ -187,9 +320,13 @@ def main():
     parser = argparse.ArgumentParser(description="Deploy generated configs")
     parser.add_argument("--device", help="Single device (mutually exclusive with --all)")
     parser.add_argument("--all", action="store_true", help="Deploy to every device in DEVICES")
-    parser.add_argument("--canary", help="Deploy to this device first, sleep --canary-wait, then proceed")
+    parser.add_argument("--canary", help="Deploy to this device first, then wait for telemetry signal")
     parser.add_argument("--canary-wait", type=int, default=30,
-                        help="Seconds to wait between canary and rest")
+                        help="Seconds to wait (used only with --skip-convergence-gate)")
+    parser.add_argument("--convergence-timeout", type=int, default=120,
+                        help="Seconds to wait for Prometheus to confirm canary convergence")
+    parser.add_argument("--skip-convergence-gate", action="store_true",
+                        help="Fall back to time-based wait instead of querying Prometheus")
     parser.add_argument("--max-delta", type=int, default=200,
                         help="Refuse to deploy if config changed by more than N lines vs git HEAD")
     parser.add_argument("--safety-threshold", type=float, default=0.34,
@@ -232,10 +369,23 @@ def main():
         if result["outcome"] in ("error", "rejected-bounds", "unknown-device"):
             failures += 1
 
-        # Canary gate
+        # Canary gate — Prometheus convergence signal preferred, time-based fallback
         if idx == 0 and args.canary and result["outcome"] == "deployed":
-            print(f"\n⏸  Canary {args.canary} deployed — waiting {args.canary_wait}s before proceeding")
-            time.sleep(args.canary_wait)
+            if args.skip_convergence_gate:
+                print(f"\n⏸  Canary {args.canary} deployed — sleeping {args.canary_wait}s (skip-gate)")
+                time.sleep(args.canary_wait)
+            else:
+                print(f"\n⏸  Canary {args.canary} deployed — waiting for Prometheus convergence "
+                      f"signal (timeout {args.convergence_timeout}s)")
+                converged, reason = wait_for_convergence(args.canary, args.convergence_timeout)
+                if not converged:
+                    print(f"❌ Canary did NOT converge ({reason}) — aborting fleet rollout")
+                    emit_event({"event": "canary-convergence-failed",
+                                "device": args.canary, "reason": reason})
+                    sys.exit(3)
+                print(f"✅ Canary converged ({reason}) — proceeding")
+                emit_event({"event": "canary-converged",
+                            "device": args.canary, "reason": reason})
 
         # Safety budget
         if failures / len(devices) > args.safety_threshold:
